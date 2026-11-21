@@ -1,0 +1,107 @@
+[
+ {
+  "nombre": "Puerta principal (peatonal)",
+  "tipo": "PEATONAL",
+  "latitud": 29.009415,
+  "longitud": -110.903271,
+  "validado": true,
+  "descripcion": "Acceso peatonal principal sobre De los Seris. Punto medio de 29.009461,-110.903292 y 29.009370,-110.903251 (Google Maps, usuario)."
+ },
+ {
+  "nombre": "Entrada de autos",
+  "tipo": "VEHICULAR",
+  "latitud": 29.008688,
+  "longitud": -110.903069,
+  "validado": true,
+  "descripcion": "Carril de entrada junto a la caseta. Punto medio de 29.008706,-110.903069 y 29.008670,-110.903068."
+ },
+ {
+  "nombre": "Salida de autos",
+  "tipo": "VEHICULAR",
+  "latitud": 29.008779,
+  "longitud": -110.903064,
+  "validado": true,
+  "descripcion": "Carril de salida junto a la caseta. Punto medio de 29.008800,-110.903059 y 29.008758,-110.903068."
+ },
+ {
+  "nombre": "Estacionamiento edificios C y G",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.009916,
+  "longitud": -110.901244,
+  "validado": false,
+  "orden": 11,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios B y D",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.008912,
+  "longitud": -110.90214,
+  "validado": false,
+  "orden": 12,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios T y J",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.010664,
+  "longitud": -110.90277,
+  "validado": false,
+  "orden": 13,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios U y L",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.010558,
+  "longitud": -110.89998,
+  "validado": false,
+  "orden": 14,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios A y Q",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.008354,
+  "longitud": -110.901288,
+  "validado": false,
+  "orden": 15,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios H y A",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.007962,
+  "longitud": -110.900832,
+  "validado": false,
+  "orden": 16,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Estacionamiento edificios R y B",
+  "tipo": "ESTACIONAMIENTO",
+  "latitud": 29.008424,
+  "longitud": -110.902795,
+  "validado": false,
+  "orden": 17,
+  "descripcion": "Centro del estacionamiento (OpenStreetMap)."
+ },
+ {
+  "nombre": "Parada Línea 4 Periférico",
+  "tipo": "PARADA",
+  "latitud": 29.011113,
+  "longitud": -110.904277,
+  "validado": true,
+  "orden": 30,
+  "descripcion": "Línea 4 dirección Periférico, sobre De los Seris frente a la UTH. Horarios en tiempo real: app UNE."
+ },
+ {
+  "nombre": "Parada Línea 4 Centro",
+  "tipo": "PARADA",
+  "latitud": 29.011191,
+  "longitud": -110.904391,
+  "validado": true,
+  "orden": 31,
+  "descripcion": "Línea 4 dirección Centro, sobre De los Seris frente a la UTH. Horarios en tiempo real: app UNE."
+ }
+]

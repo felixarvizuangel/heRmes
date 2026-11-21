@@ -1,0 +1,43 @@
+name: app_uth
+description: UTH Radar - navegación por radar espacial y geocercado.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.6.0
+  shared_preferences: ^2.5.6
+  flutter_compass: ^0.8.1
+  geolocator: ^14.1.1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+    # Respaldo de /api/campus/ (puertas + andadores) si no hay backend ni caché.
+    - assets/campus/
+    # Fotos de fachada (Street View) para verlas sin conexión.
+    - assets/fachadas/
+    # Vista aérea de los 23 lugares (Esri World Imagery).
+    - assets/aereas/
+
+  # Tipografías del nombre "heRmes" (Google Fonts, licencia OFL: assets/fonts/OFL-Cinzel.txt)
+  fonts:
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/Cinzel.ttf
+    - family: CinzelDecorative
+      fonts:
+        - asset: assets/fonts/CinzelDecorative-Bold.ttf
+          weight: 700

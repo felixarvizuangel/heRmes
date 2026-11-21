@@ -1,0 +1,92 @@
+# CI de heRmes: compila la app para iPhone en una Mac de GitHub (sin Mac propia)
+# y corre las pruebas de Flutter y Django en cada push.
+#
+# Estructura esperada del repositorio:
+#   app_uth/   -> app Flutter
+#   backend/   -> proyecto Django (manage.py)
+# Si el repo tiene otra estructura, los pasos buscan las carpetas solos.
+name: heRmes CI (iOS + pruebas)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: # botón "Run workflow" en la pestaña Actions
+
+env:
+  FLUTTER_VERSION: "3.47.2" # misma versión que en la PC de desarrollo
+
+jobs:
+  flutter:
+    name: Flutter · analyze, tests y build iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ubicar la app Flutter
+        id: app
+        run: |
+          DIR=$(dirname "$(find . -name pubspec.yaml -not -path '*/build/*' -not -path '*/.dart_tool/*' -not -path '*/_respaldo*' | head -1)")
+          echo "Carpeta de la app: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Dependencias
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: flutter pub get
+
+      - name: flutter analyze
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: flutter analyze
+
+      - name: flutter test
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: flutter test
+
+      # --no-codesign: compila el .app sin certificado de Apple. Sirve para
+      # demostrar que el proyecto iOS compila; para instalarlo en un iPhone
+      # hay que firmarlo (ver README).
+      - name: flutter build ios (sin firma)
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: flutter build ios --release --no-codesign
+
+      - name: Empaquetar Runner.app
+        working-directory: ${{ steps.app.outputs.dir }}
+        run: |
+          cd build/ios/iphoneos
+          zip -qry heRmes-ios-sin-firma.zip Runner.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heRmes-ios-sin-firma
+          path: ${{ steps.app.outputs.dir }}/build/ios/iphoneos/heRmes-ios-sin-firma.zip
+          retention-days: 14
+
+  django:
+    name: Django · pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ubicar el backend
+        id: api
+        run: |
+          DIR=$(dirname "$(find . -name manage.py -not -path '*/venv/*' -not -path '*/entrega/*' | head -1)")
+          echo "Carpeta del backend: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13" # Django 6 pide Python 3.12+
+
+      - name: Dependencias
+        working-directory: ${{ steps.api.outputs.dir }}
+        run: pip install -r requirements.txt
+
+      - name: manage.py test
+        working-directory: ${{ steps.api.outputs.dir }}
+        run: python manage.py test

@@ -1,0 +1,8 @@
+﻿build/
+.dart_tool/
+venv/
+__pycache__/
+*.pyc
+*.bak
+*.zip
+.idea/
