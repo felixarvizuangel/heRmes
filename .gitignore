@@ -6,3 +6,9 @@ __pycache__/
 *.bak
 *.zip
 .idea/
+
+# Base de datos local de Django (trae usuarios/contraseñas): NO se sube.
+# Para recrearla ver backend/README.md
+*.sqlite3
+*.sqlite3.*
+*.bak_*
