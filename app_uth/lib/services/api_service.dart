@@ -106,6 +106,10 @@ class ApiService {
       }
       final cache = await obtenerDesdeCache(motivo: motivo);
       if (cache != null) return cache;
+      // Primera vez sin backend (p. ej. la versión web en GitHub Pages):
+      // copia del catálogo incluida en la app.
+      final incluida = await _desdeRespaldoIncluido(motivo);
+      if (incluida != null) return incluida;
       throw ApiException('$motivo Sin datos guardados en el dispositivo.');
     }
   }
@@ -128,6 +132,25 @@ class ApiService {
       );
     } on FormatException {
       await limpiarCache();
+      return null;
+    }
+  }
+
+  /// Copia de `/api/edificios/` incluida en la app (regenerarla si cambian
+  /// los edificios en el backend). Permite usar heRmes sin servidor.
+  static const String kEdificiosRespaldo = 'assets/campus/edificios_uth.json';
+
+  /// Lee [kEdificiosRespaldo]; null si no existe o está dañado.
+  Future<ResultadoEdificios?> _desdeRespaldoIncluido(String motivo) async {
+    try {
+      final raw = await rootBundle.loadString(kEdificiosRespaldo);
+      return ResultadoEdificios(
+        edificios: _soloActivos(Edificio.listFromJson(jsonDecode(raw))),
+        origen: OrigenDatos.cache,
+        sincronizadoEn: null,
+        error: motivo,
+      );
+    } catch (_) {
       return null;
     }
   }

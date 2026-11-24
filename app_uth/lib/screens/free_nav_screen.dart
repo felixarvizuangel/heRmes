@@ -139,6 +139,8 @@ class _FreeNavScreenState extends State<FreeNavScreen>
       final raw = ev.heading;
       if (raw == null || !mounted) return;
       setState(() => _heading = _filtro.filter(raw));
+    }, onError: (Object _) {
+      // Sin brújula (p. ej. la versión web en Safari): se sigue sin rumbo.
     });
 
     // 3) Revisión periódica contra los edificios guardados.
