@@ -14,7 +14,7 @@ import 'map_screen.dart';
 /// Flujo pedido por el profe:
 /// 1. Al abrir la app se hace UNA petición al backend para traer los edificios.
 /// 2. Se guardan en el dispositivo ([ApiService] los persiste con
-///    SharedPreferences). Si no hay red, se usan los datos guardados.
+///    flutter_secure_storage). Si no hay red, se usan los datos guardados.
 /// 3. Se pregunta "¿Cómo quieres navegar?":
 ///    - Buscar un lugar      → Directorio con búsqueda → Detalle → Brújula (Modo A, nivel 9)
 ///    - Navegar libremente   → Spinner + geocerca (Modo B, nivel 8)

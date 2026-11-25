@@ -271,6 +271,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ? 'Maneja hasta la entrada de autos, estaciónate y sígueme a pie.'
           : 'Maneja hasta el ${e.nombre}, estaciónate ahí y sígueme a pie.';
     }
+    if (_origenRuta?.vieneDeAfuera ?? false) {
+      return 'Vienes de afuera: entra por la puerta peatonal y sígueme a ${d.nombre}.';
+    }
+    if (_origenRuta == OrigenRuta.andadores) {
+      return 'Ya estás en el campus: te llevo por los andadores a ${d.nombre}.';
+    }
     return 'Hermes te lleva a ${d.nombre}. ¡Sígueme!';
   }
 
@@ -572,11 +578,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final punto = _puntoDestino;
     if (u == null || punto == null || _pidiendoRuta || _llego) return;
     final ruta = _rutaCalles;
-    final espera = _origenRuta == OrigenRuta.calles
+    // Desde afuera puede pedirse a OSRM (servidor público): máx. cada 15 s.
+    final espera = (_origenRuta?.vieneDeAfuera ?? false)
         ? const Duration(seconds: 15)
         : const Duration(seconds: 3);
-    if (DateTime.now().difference(_ultimaRuta) < espera) return;
-    if (ruta != null && RutaService.recortar(ruta, u).desvio <= 25) return;
+    // La ruta se calculó "desde afuera" pero ya estás DENTRO y todavía te
+    // mandaría a salir: se rehace solo por andadores, sin esperar.
+    final yaAdentro = ruta != null &&
+        (_origenRuta?.vieneDeAfuera ?? false) &&
+        _rutas.dentroDelCampus(u) &&
+        RutaService.recortar(ruta, u).restante.skip(1).any(_rutas.estaFuera);
+    if (!yaAdentro) {
+      if (DateTime.now().difference(_ultimaRuta) < espera) return;
+      if (ruta != null && RutaService.recortar(ruta, u).desvio <= 25) return;
+    }
     _pidiendoRuta = true;
     _ultimaRuta = DateTime.now();
     final nueva =

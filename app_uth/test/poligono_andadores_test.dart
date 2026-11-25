@@ -8,6 +8,7 @@ import 'package:app_uth/services/geocerca_service.dart';
 import 'package:app_uth/services/geometria.dart';
 import 'package:app_uth/services/grafo_andadores.dart';
 import 'package:app_uth/services/ruta_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -157,6 +158,7 @@ void main() {
 
   test('ApiService.obtenerCampus: una petición y caché local', () async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
     var peticiones = 0;
     final api = ApiService(client: MockClient((req) async {
       peticiones++;

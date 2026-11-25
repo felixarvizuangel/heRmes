@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show sqrt;
 
 import 'package:app_uth/models/campus_model.dart';
 import 'package:app_uth/models/edificio_model.dart';
@@ -124,6 +125,125 @@ void main() {
     expect(s.estaFuera(cerca), isFalse);
     final r = (await s.calcular(cerca, puerta('EDIF-C')))!;
     expect(r.origen, OrigenRuta.andadores);
+    expect(r.origen.vieneDeAfuera, isFalse);
     expect(RutaService.largo(r.puntos), lessThan(200));
   });
+
+  group('barda del campus (punto en polígono)', () {
+    test('la copia local trae el perímetro y todo edificio cae adentro', () {
+      expect(campus.perimetro.length, greaterThanOrEqualTo(3));
+      final s = servicio();
+      expect(s.tieneBarda, isTrue);
+      for (final e in edificios) {
+        for (final c in e.coordenadas) {
+          expect(s.dentroDelCampus(LatLng(c.latitud, c.longitud)), isTrue,
+              reason: '${e.codigo} ${c.tipo}');
+        }
+      }
+      expect(s.dentroDelCampus(principal), isTrue, reason: 'puerta peatonal');
+      expect(s.estaFuera(const LatLng(29.00878, -110.90345)), isTrue,
+          reason: 'banqueta de De los Seris');
+      expect(s.estaFuera(const LatLng(29.0700, -110.9600)), isTrue);
+    });
+
+    test('ninguna ruta interior se sale de la barda', () {
+      final s = servicio();
+      for (final a in edificios) {
+        for (final b in edificios) {
+          if (a == b) continue;
+          final r = s.grafo!.ruta(puerta(a.codigo), puerta(b.codigo))!;
+          for (final p in r) {
+            expect(distanciaAfuera(campus.perimetro, p), lessThan(8.5),
+                reason: '${a.codigo} → ${b.codigo} sale en $p');
+          }
+        }
+      }
+    });
+
+    test('adentro rumbo al Edificio P: solo andadores, sin OSRM ni puerta', () async {
+      var peticiones = 0;
+      final s = RutaService(client: MockClient((_) async {
+        peticiones++;
+        return http.Response('', 503);
+      }))
+        ..configurar(campus, edificios);
+      final destino = puerta('EDIF-P');
+      // Rejilla de ~30 m sobre todo el campus: cada punto que cae dentro de
+      // la barda (y fuera de un edificio) debe ir directo por andadores.
+      var probados = 0;
+      for (var lat = 29.0060; lat <= 29.0112; lat += 0.00027) {
+        for (var lon = -110.9036; lon <= -110.8990; lon += 0.00031) {
+          final u = LatLng(lat, lon);
+          if (!s.dentroDelCampus(u) || distanciaAfuera(campus.perimetro, u) > -6) {
+            continue; // fuera, o pegado a la barda (ruido del GPS)
+          }
+          if (edificios.any((e) => dentroDe(e.poligono, u))) continue;
+          final r = await s.calcular(u, destino);
+          if (r == null) continue;
+          probados++;
+          expect(r.origen, OrigenRuta.andadores, reason: '$u');
+          for (final p in r.puntos) {
+            expect(distanciaAfuera(campus.perimetro, p), lessThan(8.5),
+                reason: 'desde $u la ruta sale del campus en $p');
+          }
+        }
+      }
+      expect(probados, greaterThan(100));
+      expect(peticiones, 0, reason: 'adentro nunca se consulta OSRM');
+    });
+
+    test('desde afuera se marca que viene de afuera', () async {
+      final s = servicio();
+      final r = (await s.calcular(const LatLng(29.00878, -110.90345), puerta('EDIF-P')))!;
+      expect(r.origen.vieneDeAfuera, isTrue);
+      expect(aLaPuerta(r.puntos), lessThan(3));
+    });
+
+    test('sin barda (backend viejo) se usa la regla de respaldo', () {
+      final s = RutaService(client: MockClient((_) async => http.Response('', 503)))
+        ..configurar(
+            CampusDatos(accesos: campus.accesos, andadores: campus.andadores),
+            edificios);
+      expect(s.tieneBarda, isFalse);
+      expect(s.estaFuera(puerta('EDIF-M')), isFalse);
+      expect(s.estaFuera(const LatLng(29.0700, -110.9600)), isTrue);
+    });
+  });
+}
+
+/// Ray casting en grados (solo para las pruebas).
+bool dentroDe(List<LatLng> poli, LatLng p) {
+  var dentro = false;
+  for (var i = 0, j = poli.length - 1; i < poli.length; j = i++) {
+    final a = poli[i], b = poli[j];
+    if ((a.latitude > p.latitude) != (b.latitude > p.latitude)) {
+      final x = a.longitude +
+          (p.latitude - a.latitude) *
+              (b.longitude - a.longitude) /
+              (b.latitude - a.latitude);
+      if (p.longitude < x) dentro = !dentro;
+    }
+  }
+  return dentro;
+}
+
+/// Metros que [p] queda FUERA de la barda (negativo = adentro).
+double distanciaAfuera(List<LatLng> barda, LatLng p) {
+  const mLat = 111320.0;
+  final mLon = mLat * 0.8746; // cos(29.01°)
+  var minima = double.infinity;
+  for (var i = 0, j = barda.length - 1; i < barda.length; j = i++) {
+    final ax = (barda[j].longitude - p.longitude) * mLon;
+    final ay = (barda[j].latitude - p.latitude) * mLat;
+    final bx = (barda[i].longitude - p.longitude) * mLon;
+    final by = (barda[i].latitude - p.latitude) * mLat;
+    final dx = bx - ax, dy = by - ay;
+    final l2 = dx * dx + dy * dy;
+    final t = l2 == 0 ? 0.0 : (-(ax * dx + ay * dy) / l2).clamp(0.0, 1.0);
+    final x = ax + t * dx, y = ay + t * dy;
+    final d = (x * x + y * y);
+    if (d < minima) minima = d;
+  }
+  final d = minima == double.infinity ? 0.0 : sqrt(minima);
+  return dentroDe(barda, p) ? -d : d;
 }

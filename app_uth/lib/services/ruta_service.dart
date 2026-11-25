@@ -6,27 +6,37 @@ import 'package:latlong2/latlong.dart';
 import '../models/campus_model.dart';
 import '../models/edificio_model.dart';
 import 'geo_math_service.dart';
+import 'geometria.dart';
 import 'grafo_andadores.dart';
 
 /// De dónde salió la ruta que se dibuja.
 enum OrigenRuta {
-  /// Grafo propio de andadores del campus (banquetas, andadores, cruces).
-  andadores('A pie por andadores'),
+  /// Ya estás DENTRO de la barda: solo grafo de andadores (Dijkstra local).
+  andadores('Dentro del campus · por andadores', vieneDeAfuera: false),
 
-  /// Servidor OSRM público (perfil foot), fuera del campus.
-  calles('A pie por calles');
+  /// Vienes de AFUERA, cerca: banqueta exterior → puerta peatonal → andadores.
+  puerta('Vienes de afuera · entra por la puerta peatonal'),
 
-  const OrigenRuta(this.texto);
+  /// Vienes de AFUERA, lejos: OSRM (perfil foot) → puerta peatonal → andadores.
+  calles('Vienes de afuera · por calles y puerta peatonal');
+
+  const OrigenRuta(this.texto, {this.vieneDeAfuera = true});
   final String texto;
+
+  /// true si la ruta empieza fuera de la barda (entra por la puerta peatonal).
+  final bool vieneDeAfuera;
 }
 
 /// Ruta a pie hacia la puerta del destino.
 ///
-/// 1. DENTRO del campus usa el GRAFO DE ANDADORES (local, sin internet):
-///    camino más corto por banquetas y andadores, sin cruzar edificios.
-/// 2. Si el usuario está lejos de todo andador (fuera del campus) pide la
-///    ruta a OSRM (servidor público y gratuito de OpenStreetMap, perfil
-///    "foot") y la descarta si atraviesa algún edificio.
+/// 0. ¿DENTRO o FUERA? Punto en polígono (ray casting, la misma función que
+///    usa la geocerca) contra la BARDA del campus (`perimetro` de
+///    `/api/campus/`, OSM way 265741798).
+/// 1. DENTRO del campus usa SOLO el GRAFO DE ANDADORES (Dijkstra local, sin
+///    internet): nunca OSRM, nunca sale por la puerta peatonal ni por la
+///    entrada de autos.
+/// 2. FUERA: llega a la PUERTA PEATONAL (banqueta exterior si estás cerca,
+///    OSRM perfil "foot" si vienes de lejos) y de ahí por los andadores.
 /// 3. Si nada de eso funciona devuelve null y el mapa usa la línea recta
 ///    (Extra 2 de la rúbrica), así la app nunca se queda sin guía.
 ///
@@ -78,14 +88,37 @@ class RutaService {
   /// estacionamiento en el modo carro.
   GrafoAndadores? grafoCalles;
 
-  /// Más lejos que esto de todo andador interior = estás fuera del campus.
+  /// Sin barda: más lejos que esto de todo andador interior = estás fuera.
   static const double margenCampusM = 35;
+
+  /// Un tramo "interior" que se sale de la barda más que esto (enlaces a la
+  /// calle, salida norte de autos) no entra al grafo a pie de adentro.
+  static const double toleranciaBardaM = 8;
+
+  /// Barda del campus en metros (plano local) para el punto en polígono.
+  List<Xy> _barda = const [];
+  ProyeccionLocal? _proyBarda;
+
+  /// true si ya se cargó el perímetro del campus.
+  bool get tieneBarda => _barda.length >= 3;
 
   /// Arma los grafos con lo que bajó de `/api/campus/`.
   void configurar(CampusDatos campus, List<Edificio> edificios) {
     final obstaculos = GrafoAndadores.obstaculosDe(edificios);
+    if (campus.perimetro.length >= 3) {
+      final o = campus.perimetro.first;
+      final proy = ProyeccionLocal(o.latitude, o.longitude);
+      _proyBarda = proy;
+      _barda = [for (final p in campus.perimetro) proy.deLatLng(p)];
+    } else {
+      _proyBarda = null;
+      _barda = const [];
+    }
     grafo = GrafoAndadores(
-      [for (final a in campus.andadores) if (!a.esExterior) a],
+      [
+        for (final a in campus.andadores)
+          if (!a.esExterior && _dentroDeLaBarda(a)) a,
+      ],
       obstaculos: obstaculos,
     );
     grafoExterior = GrafoAndadores(
@@ -101,9 +134,33 @@ class RutaService {
     );
   }
 
-  /// true si [p] está fuera de la barda: lejos de los andadores interiores
-  /// o más cerca de la calle de afuera que de cualquier andador interior.
+  /// true si [p] está DENTRO del polígono del campus (sin barda cargada se
+  /// usa la regla de respaldo de [estaFuera]).
+  bool dentroDelCampus(LatLng p) => !estaFuera(p);
+
+  /// true si todo el tramo cae dentro de la barda (± [toleranciaBardaM]).
+  bool _dentroDeLaBarda(Andador a) {
+    final proy = _proyBarda;
+    if (proy == null) return true;
+    for (final p in a.puntos) {
+      final xy = proy.deLatLng(p);
+      if (Geometria.puntoEnPoligono(xy, _barda)) continue;
+      if (Geometria.puntoMasCercanoContorno(xy, _barda).d > toleranciaBardaM) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// true si [p] está FUERA del campus.
+  ///
+  /// Con barda: punto en polígono (ray casting). Sin barda (datos viejos):
+  /// lejos de los andadores interiores o más cerca de la calle de afuera.
   bool estaFuera(LatLng p) {
+    final proy = _proyBarda;
+    if (proy != null && tieneBarda) {
+      return !Geometria.puntoEnPoligono(proy.deLatLng(p), _barda);
+    }
     final g = grafo;
     if (g == null || g.vacio) return true;
     final dIn = g.distanciaAlGrafo(p) ?? double.infinity;
@@ -115,7 +172,9 @@ class RutaService {
 
   /// Ruta completa con su origen, o null (el mapa dibuja la línea recta).
   ///
-  /// - Dentro del campus: solo andadores interiores.
+  /// - Dentro del campus: SOLO andadores interiores (Dijkstra local). Sin
+  ///   OSRM y sin pasar por la puerta peatonal ni la entrada de autos; si el
+  ///   grafo no alcanza, null (línea recta), nunca una vuelta por la calle.
   /// - Fuera del campus: hasta la PUERTA PEATONAL (por la calle de afuera
   ///   si estás cerca, o por OSRM si vienes de lejos) y de ahí por los
   ///   andadores interiores. Nunca entra por la entrada de autos.
@@ -123,10 +182,13 @@ class RutaService {
       LatLng desde, LatLng hasta) async {
     final g = grafo;
     if (g != null && !g.vacio) {
-      if (!estaFuera(desde)) {
+      if (dentroDelCampus(desde)) {
         final local = g.ruta(desde, hasta);
-        if (local != null) return (puntos: local, origen: OrigenRuta.andadores);
-      } else if (puertasPeatonales.isNotEmpty) {
+        return local == null
+            ? null
+            : (puntos: local, origen: OrigenRuta.andadores);
+      }
+      if (puertasPeatonales.isNotEmpty) {
         final porPuerta = await _porPuerta(g, desde, hasta);
         if (porPuerta != null) return porPuerta;
       }
@@ -171,7 +233,7 @@ class RutaService {
     if (mejorAdentro == null || mejorPuerta == null) return null;
 
     // Tramo de afuera: banqueta exterior (cerca) u OSRM (lejos).
-    var origen = OrigenRuta.andadores;
+    var origen = OrigenRuta.puerta;
     final ext = grafoExterior;
     List<LatLng>? afuera = ext?.ruta(desde, mejorPuerta);
     if (afuera == null) {

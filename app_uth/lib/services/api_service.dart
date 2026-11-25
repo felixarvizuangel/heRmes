@@ -4,10 +4,10 @@ import 'dart:io';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/campus_model.dart';
 import '../models/edificio_model.dart';
+import 'almacen_lugares.dart';
 
 /// Origen de los datos entregados por [ApiService].
 enum OrigenDatos { red, cache }
@@ -48,16 +48,19 @@ class ApiService {
     http.Client? client,
     this.baseUrl = defaultBaseUrl,
     this.timeout = const Duration(seconds: 8),
-  }) : _client = client ?? http.Client();
+    AlmacenLugares? almacen,
+  })  : _client = client ?? http.Client(),
+        almacen = almacen ?? AlmacenLugares();
 
   /// 10.0.2.2 = localhost de la máquina anfitriona desde el emulador Android.
   /// Para teléfono real: flutter run --dart-define=API_URL=http://TU_IP:8000/api
   static const String defaultBaseUrl =
       String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:8000/api');
-  static const String _kCacheJson = 'cache_edificios_json_v1';
-  static const String _kCacheFecha = 'cache_edificios_fecha_v1';
 
   final http.Client _client;
+
+  /// Almacenamiento local cifrado (flutter_secure_storage) de los lugares.
+  final AlmacenLugares almacen;
   final String baseUrl;
   final Duration timeout;
 
@@ -70,7 +73,8 @@ class ApiService {
   /// app y, después, todas las consultas contra los datos locales.
   ///
   /// - Primera llamada de la sesión: descarga de la red y la guarda en el
-  ///   dispositivo (SharedPreferences). Si no hay red, usa lo guardado.
+  ///   dispositivo ([AlmacenLugares], flutter_secure_storage). Si no hay
+  ///   red, usa lo guardado.
   /// - Llamadas siguientes (radar, mapa, directorio…): devuelven la lista
   ///   local sin tocar la red.
   /// - [forzarRed] = true (botón "Sincronizar"): vuelve a descargar.
@@ -116,24 +120,14 @@ class ApiService {
 
   /// Lee la caché local; null si no existe o está corrupta.
   Future<ResultadoEdificios?> obtenerDesdeCache({String? motivo}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kCacheJson);
-    if (raw == null) return null;
-    try {
-      final edificios = Edificio.listFromJson(jsonDecode(raw));
-      final ms = prefs.getInt(_kCacheFecha);
-      return ResultadoEdificios(
-        edificios: _soloActivos(edificios),
-        origen: OrigenDatos.cache,
-        sincronizadoEn: ms == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(ms),
-        error: motivo,
-      );
-    } on FormatException {
-      await limpiarCache();
-      return null;
-    }
+    final edificios = await almacen.leerEdificios();
+    if (edificios == null) return null;
+    return ResultadoEdificios(
+      edificios: _soloActivos(edificios),
+      origen: OrigenDatos.cache,
+      sincronizadoEn: await almacen.leerFechaSincronizacion(),
+      error: motivo,
+    );
   }
 
   /// Copia de `/api/edificios/` incluida en la app (regenerarla si cambian
@@ -157,14 +151,11 @@ class ApiService {
 
   Future<void> limpiarCache() async {
     _sesion = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kCacheJson);
-    await prefs.remove(_kCacheFecha);
+    await almacen.borrarEdificios();
   }
 
   // ───────────── Campus: puertas/entradas + andadores ─────────────
 
-  static const String _kCacheCampus = 'cache_campus_json_v1';
   CampusDatos? _campusSesion;
 
   /// Copia de `/api/campus/` incluida en la app (regenerarla si cambian las
@@ -178,7 +169,6 @@ class ApiService {
   Future<CampusDatos> obtenerCampus({bool forzarRed = false}) async {
     final local = _campusSesion;
     if (local != null && !forzarRed) return local;
-    final prefs = await SharedPreferences.getInstance();
     try {
       final resp = await _client
           .get(Uri.parse('$baseUrl/campus/'),
@@ -187,18 +177,13 @@ class ApiService {
       if (resp.statusCode != 200) {
         throw HttpException('HTTP ${resp.statusCode}');
       }
-      final datos = CampusDatos.fromJson(jsonDecode(utf8.decode(resp.bodyBytes)));
-      await prefs.setString(_kCacheCampus, jsonEncode(datos.toJson()));
+      final datos = await _conBarda(
+          CampusDatos.fromJson(jsonDecode(utf8.decode(resp.bodyBytes))));
+      await almacen.guardarCampus(datos);
       return _campusSesion = datos;
     } catch (_) {
-      final raw = prefs.getString(_kCacheCampus);
-      if (raw != null) {
-        try {
-          return _campusSesion = CampusDatos.fromJson(jsonDecode(raw));
-        } on FormatException {
-          await prefs.remove(_kCacheCampus);
-        }
-      }
+      final guardado = await almacen.leerCampus();
+      if (guardado != null) return _campusSesion = await _conBarda(guardado);
       // Primera vez sin backend: copia incluida en la app (assets/campus).
       try {
         final raw = await rootBundle.loadString(kCampusRespaldo);
@@ -206,6 +191,19 @@ class ApiService {
       } catch (_) {
         return CampusDatos.vacio;
       }
+    }
+  }
+
+  /// Si [d] no trae la barda (backend o caché de antes), usa la de la copia
+  /// incluida en la app: sin barda no se sabe si estás dentro del campus.
+  Future<CampusDatos> _conBarda(CampusDatos d) async {
+    if (d.perimetro.length >= 3) return d;
+    try {
+      final raw = await rootBundle.loadString(kCampusRespaldo);
+      final barda = CampusDatos.fromJson(jsonDecode(raw)).perimetro;
+      return barda.length >= 3 ? d.conPerimetro(barda) : d;
+    } catch (_) {
+      return d;
     }
   }
 
@@ -277,14 +275,8 @@ class ApiService {
     return resultado;
   }
 
-  Future<void> _guardarCache(List<Edificio> edificios, DateTime fecha) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _kCacheJson,
-      jsonEncode(edificios.map((e) => e.toJson()).toList()),
-    );
-    await prefs.setInt(_kCacheFecha, fecha.millisecondsSinceEpoch);
-  }
+  Future<void> _guardarCache(List<Edificio> edificios, DateTime fecha) =>
+      almacen.guardarEdificios(edificios, fecha);
 
   List<Edificio> _soloActivos(List<Edificio> lista) => lista
       .where((e) => e.activo && e.coordenadas.isNotEmpty)

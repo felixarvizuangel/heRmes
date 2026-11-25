@@ -1,3 +1,7 @@
+import json
+from functools import lru_cache
+from pathlib import Path
+
 from django.utils import timezone
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.throttling import AnonRateThrottle
@@ -48,13 +52,26 @@ class AndadorViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.AllowAny])
 def campus(request):
     """Todo lo del campus que no es edificio, en UNA sola petición para la app:
-    puertas/entradas y andadores (la app lo guarda y después trabaja local)."""
+    puertas/entradas, andadores y el PERÍMETRO (barda) del campus. Con el
+    perímetro la app decide si el usuario ya está adentro (ruta solo por
+    andadores) o viene de afuera (entra por la puerta peatonal)."""
     return Response(
         {
             "accesos": PuntoAccesoSerializer(PuntoAcceso.objects.filter(activo=True), many=True).data,
             "andadores": AndadorSerializer(Andador.objects.filter(activo=True), many=True).data,
+            "perimetro": perimetro_campus(),
         }
     )
+
+
+@lru_cache(maxsize=1)
+def perimetro_campus():
+    """Polígono [[lat, lon], ...] de la barda (OSM way 265741798, ODbL)."""
+    ruta = Path(__file__).resolve().parent / "datos" / "barda_uth.json"
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8"))["perimetro"]
+    except (OSError, ValueError, KeyError):
+        return []
 
 
 

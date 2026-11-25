@@ -127,14 +127,26 @@ class Andador {
 
 /// Todo lo del campus que no es edificio (`/api/campus/`, una sola petición).
 class CampusDatos {
-  const CampusDatos({this.accesos = const [], this.andadores = const []});
+  const CampusDatos({
+    this.accesos = const [],
+    this.andadores = const [],
+    this.perimetro = const [],
+  });
 
   static const vacio = CampusDatos();
 
   final List<PuntoAcceso> accesos;
   final List<Andador> andadores;
 
+  /// Barda del campus (polígono). Vacío = el backend no lo mandó.
+  final List<LatLng> perimetro;
+
   bool get estaVacio => accesos.isEmpty && andadores.isEmpty;
+
+  /// Copia con otro [perimetro] (p. ej. el de la copia incluida en la app
+  /// cuando un backend viejo o la caché no lo traen).
+  CampusDatos conPerimetro(List<LatLng> p) =>
+      CampusDatos(accesos: accesos, andadores: andadores, perimetro: p);
 
   factory CampusDatos.fromJson(Object? json) {
     if (json is! Map<String, dynamic>) {
@@ -148,12 +160,19 @@ class CampusDatos {
           .map(Andador.fromJson)
           .where((a) => a.puntos.length >= 2)
           .toList(growable: false),
+      perimetro: [
+        for (final p in (json['perimetro'] as List? ?? const []))
+          if (p is List && p.length >= 2) LatLng(_num(p[0]), _num(p[1])),
+      ],
     );
   }
 
   Map<String, dynamic> toJson() => {
         'accesos': accesos.map((a) => a.toJson()).toList(),
         'andadores': andadores.map((a) => a.toJson()).toList(),
+        'perimetro': [
+          for (final p in perimetro) [p.latitude, p.longitude]
+        ],
       };
 }
 

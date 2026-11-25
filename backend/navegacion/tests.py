@@ -31,6 +31,10 @@ class CampusApiTests(TestCase):
         self.assertEqual([a["nombre"] for a in r.json()["accesos"]], ["Entrada de autos"])
         self.assertEqual(r.json()["accesos"][0]["tipo_display"], "Entrada de autos")
         self.assertEqual(len(r.json()["andadores"]), 1)
+        # Barda del campus: polígono cerrado alrededor de la puerta peatonal.
+        perimetro = r.json()["perimetro"]
+        self.assertGreaterEqual(len(perimetro), 3)
+        self.assertTrue(all(len(p) == 2 for p in perimetro))
 
     def test_anonimo_no_puede_escribir(self):
         r = self.api.post("/api/accesos/", {"nombre": "x", "tipo": "PEATONAL", "latitud": 29, "longitud": -110}, format="json")

@@ -5,6 +5,7 @@ import 'package:app_uth/screens/welcome_screen.dart';
 import 'package:app_uth/services/api_service.dart';
 import 'package:app_uth/theme/tema_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -20,6 +21,7 @@ void main() {
   ];
   testWidgets('bienvenida → directorio → detalle', (t) async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
     final api = ApiService(client: MockClient((_) async => http.Response.bytes(utf8.encode(jsonEncode(json)), 200)));
     await t.pumpWidget(TemaScope(controller: TemaController.enMemoria(), child: MaterialApp(home: WelcomeScreen(apiService: api))));
     await t.pumpAndSettle();

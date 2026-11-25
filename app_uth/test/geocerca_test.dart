@@ -4,6 +4,7 @@ import 'package:app_uth/models/edificio_model.dart';
 import 'package:app_uth/services/api_service.dart';
 import 'package:app_uth/services/geo_math_service.dart';
 import 'package:app_uth/services/geocerca_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -122,6 +123,7 @@ void main() {
 
   test('ApiService: una sola petición por sesión, luego datos locales', () async {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
     var peticiones = 0;
     final api = ApiService(
       client: MockClient((_) async {
